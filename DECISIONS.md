@@ -35,3 +35,16 @@ Where the spec is silent, the simplest option was chosen and recorded here.
 11. **LLM fallback** runs only for rows the regex parser couldn't complete. Both sample reports parse fully without it. If no LLM key is set, those rows are kept as raw text and a warning is shown.
 12. **LLM responses** are cached as JSON files under `DATA_DIR/llm_cache/`, keyed by a hash of model, prompt version, messages and schema, because `llm_calls` has no column for the response.
 13. **Re-importing** the same report (same task, file name and flagged version) replaces its cards and rows rather than adding a second copy.
+
+## Phase 3 – Grading and review
+
+1. **Grader model is chosen in Settings** from a dropdown of the models your OpenRouter key can use (fetched from OpenRouter's `/models/user`, then `/models`, with prices shown). If the list can't be fetched, a text box takes a model id. `anthropic/claude-opus-5.5` is only the fallback default.
+2. **Settings live in the database** (`settings` table) and override the environment defaults. Every change is written to the audit log.
+3. **Grade storage.** Each criterion gets one `grades` row per pass. The pass-1 row carries the confirmed `final_result` and `reviewed_by`.
+4. **Result names.** Positive criteria are pass/fail and penalties triggered/not_triggered. If the grader mixes these up, "fail" on a penalty is read as triggered and "not_triggered" on a criterion as pass.
+5. **Review flags.** A line goes to review when the two passes disagree, either pass has low confidence, a pass left it out, or (for the gold) it fails or a penalty triggers. Gold lines are labelled "grader error or real gold issue".
+6. **Confirm all unflagged lines** is a shortcut that accepts the agreed result for every unflagged line. Flagged lines must be confirmed one by one. The baseline can be locked only when every line is confirmed. Unlocking is allowed and is audited.
+7. **Score before review** uses the agreed (suggested) result for lines not yet confirmed, so a score shows straight after grading.
+8. **Cache.** Results are reused when the full request is identical: file text, rubric section, prompt, model and prompt version. This matches the spec's key (file hash, rubric hash, model, prompt version) in effect.
+9. **Long sheets.** Sheets over 300 rows are sent as header plus row counts, as the spec says. Targeted lookups into the full data aren't built yet; the gold and model outputs in both samples are well under 300 rows.
+10. **Score formula** setting offers "(earned − penalty) / positive_total" (default) and "earned / positive_total". Earned / positive total is always shown too.

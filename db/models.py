@@ -272,3 +272,22 @@ class PriorQAItem(Base):
     check_code_location: Mapped[str | None] = mapped_column(Text)
     qa_comment: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str | None] = mapped_column(String(64))
+
+
+class Setting(Base):
+    """App settings edited on the Settings page; they override the environment defaults."""
+
+    __tablename__ = "settings"
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str | None] = mapped_column(Text)
+
+
+class BaselineLock(Base):
+    """A file's grades confirmed line by line and locked as the baseline for its version."""
+
+    __tablename__ = "baseline_locks"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    version_id: Mapped[int] = mapped_column(ForeignKey("versions.id"))
+    file_id: Mapped[int] = mapped_column(ForeignKey("files.id"), unique=True)
+    locked_by: Mapped[str | None] = mapped_column(String(64))
+    locked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

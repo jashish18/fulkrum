@@ -19,8 +19,26 @@ class LLMError(RuntimeError):
     pass
 
 
+def _model() -> str:
+    try:
+        from core import settings
+
+        return settings.grader_model()
+    except Exception:  # noqa: BLE001 - settings table may not exist yet
+        return config.GRADER_MODEL
+
+
+def _zdr() -> bool:
+    try:
+        from core import settings
+
+        return settings.zdr()
+    except Exception:  # noqa: BLE001
+        return config.LLM_ZDR
+
+
 def is_configured() -> bool:
-    return bool(config.LLM_API_KEY and config.GRADER_MODEL)
+    return bool(config.LLM_API_KEY and _model())
 
 
 def load_prompt(name: str, version: str) -> str:
@@ -38,7 +56,7 @@ def call_json(purpose: str, prompt_version: str, system: str, user: str, schema:
     """One structured call. Cached by a hash of (model, prompt version, messages, schema)."""
     if not is_configured():
         raise LLMError("LLM_API_KEY and GRADER_MODEL must be set")
-    model = model or config.GRADER_MODEL
+    model = model or _model()
     req = {"model": model, "prompt_version": prompt_version, "system": system, "user": user, "schema": schema}
     h = hashlib.sha256(json.dumps(req, sort_keys=True).encode()).hexdigest()
     cache = config.data_path("llm_cache", f"{h}.json")
@@ -46,7 +64,7 @@ def call_json(purpose: str, prompt_version: str, system: str, user: str, schema:
         return json.loads(cache.read_text())
 
     extra: dict[str, Any] = {"usage": {"include": True}}
-    if config.LLM_ZDR:
+    if _zdr():
         extra["provider"] = {"zdr": True, "data_collection": "deny"}
     t0 = time.time()
     try:
@@ -107,3 +125,40 @@ def extract_options(text: str, part: str) -> dict[str, Any]:
     tmpl = load_prompt("extract_options", "v1")
     return call_json("extract_options", "v1", "Return only JSON that matches the schema.",
                      tmpl.format(part=part, text=text), OPTIONS_SCHEMA)
+
+
+FALLBACK_MODEL = "anthropic/claude-opus-5.5"
+
+
+def list_models() -> tuple[list[dict[str, Any]], str | None]:
+    """Models the configured OpenRouter key can use, for the Settings dropdown.
+
+    Tries /models/user (filtered by the account's provider settings), then /models.
+    Returns (models, error). Each model: {id, name, prompt_price, completion_price}.
+    """
+    import urllib.error
+    import urllib.request
+
+    if not config.LLM_API_KEY:
+        return [], "LLM_API_KEY isn't set, so the model list can't be fetched"
+    headers = {"Authorization": f"Bearer {config.LLM_API_KEY}"}
+    base = config.LLM_BASE_URL.rstrip("/")
+    last_err = None
+    for path in ("/models/user", "/models"):
+        try:
+            req = urllib.request.Request(base + path, headers=headers)
+            with urllib.request.urlopen(req, timeout=20) as r:
+                data = json.loads(r.read().decode()).get("data", [])
+            out = []
+            for m in data:
+                pr = m.get("pricing") or {}
+                out.append({"id": m.get("id"), "name": m.get("name") or m.get("id"),
+                            "prompt_price": pr.get("prompt"), "completion_price": pr.get("completion")})
+            out = [m for m in out if m["id"]]
+            if out:
+                return sorted(out, key=lambda m: m["name"].lower()), None
+        except urllib.error.HTTPError as e:
+            last_err = f"{path}: HTTP {e.code}"
+        except Exception as e:  # noqa: BLE001
+            last_err = str(e)
+    return [], last_err or "No models returned"
