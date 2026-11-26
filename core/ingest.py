@@ -21,7 +21,8 @@ from typing import Any
 from core import config
 from core.extract import DELIVERABLE_EXTS, extract_file, text_view
 
-ROLES = ["prompt", "rubric", "trajectory", "failure_notes", "gold", "reference", "model_output", "other"]
+ROLES = ["prompt", "rubric", "trajectory", "failure_notes", "gold", "reference", "model_output",
+         "qa_sheet", "other"]
 
 _JUNK = re.compile(r"(^|/)(__MACOSX|\.DS_Store|Thumbs\.db|desktop\.ini|~\$[^/]*)(/|$)", re.I)
 MAX_NESTING = 5
@@ -203,6 +204,8 @@ def suggest_role(name: str, refs: dict[str, set[str]]) -> tuple[str, str]:
         return "trajectory", "name contains gold-trajectory"
     if "where-model-failed" in base or "where_model_failed" in base or "where model failed" in base:
         return "failure_notes", "name contains where-model-failed"
+    if "qa_feedback" in base or "qa feedback" in folders:
+        return "qa_sheet", "prior QA sheet (qa_feedback / QA feedback folder)"
     if stem == "prompt" and ext in {".txt", ".md", ".docx", ""}:
         return "prompt", "file named prompt"
     if "gold_deliverable" in types:
@@ -224,7 +227,7 @@ def parse_label(zip_name: str) -> str | None:
 
 
 def parse_task_code(zip_name: str) -> str | None:
-    m = re.search(r"task[\s_\-]*0*(\d+)", zip_name, re.I)
+    m = re.search(r"task[\s_\-]*0*(\d+)", zip_name, re.I) or re.match(r"0*(\d+)[\s_\-]", zip_name)
     return m.group(1) if m else None
 
 

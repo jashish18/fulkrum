@@ -224,9 +224,14 @@ def package_parts(path: Path) -> dict[str, Any]:
 
 
 def _col_width(ws, col_letter: str) -> float:
-    dim = ws.column_dimensions.get(col_letter)
-    if dim is not None and dim.width:
-        return float(dim.width)
+    """Column width in Excel character units; openpyxl groups ranges (min..max) under one key."""
+    from openpyxl.utils import column_index_from_string
+
+    idx = column_index_from_string(col_letter)
+    for dim in ws.column_dimensions.values():
+        lo, hi = dim.min or 0, dim.max or 0
+        if lo <= idx <= hi and dim.width:
+            return float(dim.width)
     default = getattr(ws.sheet_format, "defaultColWidth", None)
     if default:
         return float(default)
@@ -257,9 +262,10 @@ def extract_xlsx(path: Path) -> dict[str, Any]:
             total = sum(_col_width(ws, get_column_letter(c)) for c in range(rng.min_col, rng.max_col + 1))
             merged[f"{get_column_letter(rng.min_col)}{rng.min_row}"] = total
         widths = {}
-        for letter, dim in ws.column_dimensions.items():
-            if dim.width:
-                widths[letter] = dim.width
+        for dim in ws.column_dimensions.values():
+            if dim.width and dim.min and dim.max:
+                for ci in range(dim.min, min(dim.max, ws.max_column or dim.max) + 1):
+                    widths[get_column_letter(ci)] = dim.width
         sheet: dict[str, Any] = {
             "name": ws.title,
             "state": ws.sheet_state,  # visible / hidden / veryHidden
@@ -340,7 +346,8 @@ def xlsx_text_view(ex: dict[str, Any], full: bool = False) -> str:
         lines.append(f"### Sheet: {s['name']}{state}")
         cells = s["cells"]
         if not full and s["max_row"] > MAX_SHEET_ROWS_FOR_LLM:
-            header = [c for c in cells if _row_of(c["addr"]) == _first_row(cells)]
+            first = _first_row(cells)
+            header = [c for c in cells if _row_of(c["addr"]) == first]
             lines.extend(_cell_line(c) for c in header)
             lines.append(f"... {s['max_row']} rows x {s['max_col']} columns, {len(cells)} non-empty cells "
                          f"(full data available for targeted lookups)")

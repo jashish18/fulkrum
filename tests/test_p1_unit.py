@@ -108,6 +108,7 @@ def test_stage_and_roles():
     assert roles["Claude Output.xlsx"] == "model_output"
     assert roles["Reference files/Memo.docx"] == "reference"
     assert roles["Reference files/data.csv"] == "reference"
+    assert stage_zip(_task_zip(), "45-surety-bonds.zip").suggested_task == "45"
     assert not any("__MACOSX" in n for n in roles)
 
 
@@ -115,7 +116,8 @@ def test_save_version_and_metadata():
     from db.models import Criterion, FailureNote, File
     from db.session import session_scope
 
-    st = stage_zip(_task_zip(), "Task 99 v12.zip")
+    data = _task_zip()
+    st = stage_zip(data, "Task 99 v12.zip")
     vid = save_version(st, "99", "v12", {f.name: f.role for f in st.files})
     with session_scope() as s:
         assert s.query(Criterion).filter_by(version_id=vid).count() == 4
@@ -129,7 +131,7 @@ def test_save_version_and_metadata():
         out_meta = json.loads(files["Claude Output.xlsx"].metadata_json)
         assert out_meta["personal_names"] == []
     # Same zip again reuses the version.
-    assert save_version(stage_zip(_task_zip(), "Task 99 v12.zip"), "99", "v12",
+    assert save_version(stage_zip(data, "Task 99 v12.zip"), "99", "v12",
                         {f.name: f.role for f in st.files}) == vid
 
 
