@@ -12,6 +12,10 @@ def require_auth() -> str:
     """Stop the page unless the shared password was entered. Returns the user's display name."""
     if st.session_state.get("authed"):
         return st.session_state.get("user_name") or "team"
+    if not config.APP_PASSWORD and config.REQUIRE_PASSWORD:
+        st.title("Task Rework Dashboard")
+        st.error("APP_PASSWORD is not set. Add it to the app's environment variables and restart.")
+        st.stop()
     if not config.APP_PASSWORD:
         st.warning("APP_PASSWORD is not set, so the app is open. Set it before deploying.")
         st.session_state["authed"] = True

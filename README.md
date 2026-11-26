@@ -1,22 +1,52 @@
 # Task Rework Dashboard
 
-A Streamlit app for assessing client rework reports on training tasks and verifying the revised tasks. The build spec is the source of truth; see `DECISIONS.md` for choices made where the spec is silent.
+A Streamlit app for assessing client rework reports on training tasks (Step 1) and verifying the revised tasks (Step 2). The build spec is the source of truth. `DECISIONS.md` records the choices made where the spec is silent.
 
-## Run locally
+The dashboard only reads task files. People make the fixes; the app checks them. The one file it writes is a decisions workbook, a new copy of the uploaded report.
+
+## Run it on a Windows computer
+
+1. **Install Python (once).** Download Python 3.11 or newer from <https://www.python.org/downloads/>. On the installer's first screen tick **"Add python.exe to PATH"**, then click **Install Now**.
+2. **Start the app.** In the app's folder, double-click **`run_windows.bat`**.
+   - The first time, it installs what the app needs (a few minutes) and opens a settings file called `.env` in Notepad.
+   - In `.env`, set `APP_PASSWORD=` to a password of your choice, and paste your OpenRouter key after `LLM_API_KEY=`. Save and close Notepad, then double-click `run_windows.bat` again.
+3. Your browser opens at <http://localhost:8501>. Sign in with your name and the password.
+4. Keep the black window open while you use the app. Close it to stop the app.
+
+Your data (uploads, grades, decisions) is kept in the `data` folder next to the app. The installed packages live in `%LOCALAPPDATA%\TaskReworkDashboard`, outside OneDrive.
+
+Without an `LLM_API_KEY` everything still works except AI grading, AI reading of QA comments and AI checks; those parts fall back to rules or ask a person.
+
+## Deploy on Railway
+
+1. Sign in at <https://railway.com> with GitHub and choose **New Project → Deploy from GitHub repo → jashish18/fulkrum** (pick the branch you want to run).
+2. Railway finds the `Dockerfile` and `railway.json` and builds the app. It runs as **one instance only**, because the SQLite database can't be shared.
+3. **Add a volume** (right-click the service → *Attach volume*) with mount path **`/data`**. Without it, every redeploy loses your data.
+4. Under **Variables**, add:
+   - `APP_PASSWORD`: the team password (the app refuses to start without one)
+   - `LLM_API_KEY`: your OpenRouter key
+   - optional: `GRADER_MODEL`, `LLM_ZDR` (default `true`), `MODEL_THRESHOLD` (0.95), `GOLD_THRESHOLD` (0.99)
+5. Under **Settings → Networking**, click **Generate Domain**. Open that address and sign in.
+
+`PORT` and `DATA_DIR=/data` are set for you. The grader model can also be picked later on the app's Settings page.
+
+## Run with Docker anywhere
+
+```bash
+docker build -t task-rework-dashboard .
+docker run -p 8501:8501 -v trd-data:/data -e APP_PASSWORD=... -e LLM_API_KEY=... task-rework-dashboard
+```
+
+## For developers
 
 ```bash
 pip install -r requirements.txt
 cp .env.example .env   # then set APP_PASSWORD and the LLM settings
 streamlit run app.py
+python -m pytest -q    # acceptance tests use samples/ (gitignored) and skip without it
 ```
 
-## Tests
-
-```bash
-python -m pytest -q
-```
-
-Acceptance tests use the files in `samples/` (gitignored) and are skipped when it is missing.
+Layout: `app.py` (portfolio), `pages/` (Upload, Versions, Cards, Grades, Task, Rules, Settings), `core/` (ingest, extract, report_parser, grading, scoring, impact, verify, writeback, llm), `db/`, `prompts/` (versioned LLM prompts), `tests/`.
 
 ## Status
 
@@ -26,4 +56,4 @@ Acceptance tests use the files in `samples/` (gitignored) and are skipped when i
 - [x] P4 Step 1 scenarios
 - [x] P5 Write-back
 - [x] P6 Verification and integrity
-- [ ] P7 Deployment
+- [x] P7 Deployment

@@ -88,3 +88,11 @@ Where the spec is silent, the simplest option was chosen and recorded here.
 8. **Cell refs in the trajectory** that follow another file's name on the same line (e.g. "Working_Hours.xlsx (footnote A250)") belong to that file and are not checked against the gold.
 9. **A re-saved file with no visible difference** (same text, cells and properties, different bytes) is listed once as "changed (no difference in text, cells or properties)" so it can be accepted.
 10. **Integrity checks** also report each subtask's step count against the 5–15 guideline. They show on the Versions page and the Verification tab, and in the verification workbook.
+
+## Phase 7 – Deployment
+
+1. **No password, no app, when deployed.** The Docker image sets `REQUIRE_PASSWORD=true`, so a deployment without `APP_PASSWORD` shows an error instead of opening. Run locally without a password, the app still opens with a warning.
+2. **Railway** reads `railway.json`: Dockerfile build, one replica, health check on Streamlit's `/_stcore/health`. A volume at `/data` must be attached by hand; Railway's config file can't declare one.
+3. **Windows launcher.** `run_windows.bat` makes its Python environment under `%LOCALAPPDATA%` so OneDrive doesn't sync thousands of package files, installs the requirements, creates `.env` from `.env.example` on first run and starts the app.
+4. **Streamlit's developer toolbar** (the "Deploy" button) is hidden for users.
+5. The Docker image couldn't be built in the cloud workspace (Docker Hub refused with "too many requests"), so it was checked another way: the full test suite passes on Python 3.11, and the app was started with the image's exact start command and settings. It answers the health check, refuses to open without a password and signs in with one.

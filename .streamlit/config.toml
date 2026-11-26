@@ -1,3 +1,6 @@
 [server]
 maxUploadSize = 500
 headless = true
+
+[client]
+toolbarMode = "viewer"

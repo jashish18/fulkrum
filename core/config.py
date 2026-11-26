@@ -32,6 +32,8 @@ LLM_API_KEY = os.getenv("LLM_API_KEY") or ""
 GRADER_MODEL = os.getenv("GRADER_MODEL") or "anthropic/claude-opus-5.5"
 LLM_ZDR = _bool("LLM_ZDR", True)
 APP_PASSWORD = os.getenv("APP_PASSWORD") or ""
+# Set in the Docker image: a deployed app never runs without a password.
+REQUIRE_PASSWORD = _bool("REQUIRE_PASSWORD", False)
 MODEL_THRESHOLD = _float("MODEL_THRESHOLD", 0.95)
 GOLD_THRESHOLD = _float("GOLD_THRESHOLD", 0.99)
 
