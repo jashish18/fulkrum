@@ -11,8 +11,13 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import re
 import shutil
+import stat
+import sys
+import time
+import uuid
 import zipfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path, PurePosixPath
@@ -231,13 +236,62 @@ def parse_task_code(zip_name: str) -> str | None:
     return m.group(1) if m else None
 
 
+def staging_base() -> Path:
+    """Where zips are unpacked before saving: the system temp folder, outside OneDrive.
+
+    OneDrive (and antivirus) can lock freshly written folders, so staging never deletes and
+    reuses a folder: each upload gets a fresh one, and old ones are tidied up when possible.
+    """
+    import tempfile
+
+    base = Path(os.getenv("STAGING_DIR") or Path(tempfile.gettempdir()) / "TaskReworkDashboard" / "staging")
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+def _force_remove(func, path, _exc) -> None:
+    """rmtree error handler: clear the read-only flag and try once more; give up quietly."""
+    try:
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+    except OSError:
+        pass
+
+
+def remove_tree(path: Path) -> bool:
+    """Delete a folder if Windows lets us. Returns False (never raises) if something holds it."""
+    for _ in range(3):
+        try:
+            if sys.version_info >= (3, 12):
+                shutil.rmtree(path, onexc=_force_remove)
+            else:
+                shutil.rmtree(path, onerror=_force_remove)
+        except OSError:
+            pass
+        if not Path(path).exists():
+            return True
+        time.sleep(0.2)
+    return False
+
+
+def _new_staging_dir(digest: str) -> Path:
+    base = staging_base()
+    cutoff = time.time() - 24 * 3600
+    for old in base.iterdir():  # tidy up folders from earlier days
+        try:
+            if old.is_dir() and old.stat().st_mtime < cutoff:
+                remove_tree(old)
+        except OSError:
+            pass
+    root = base / f"{digest[:16]}-{uuid.uuid4().hex[:8]}"
+    root.mkdir(parents=True)
+    return root
+
+
 def stage_zip(data: bytes, zip_name: str) -> Staged:
     """Extract a task zip and suggest roles. Raises ValueError for a non-zip."""
     digest = sha256_bytes(data)
-    root = config.data_path("staging", digest, "x").parent
-    if root.exists():
-        shutil.rmtree(root)
-    root.mkdir(parents=True)
+    root = _new_staging_dir(digest)
     (root / "_original.zip").write_bytes(data)
     warnings: list[str] = []
     found: list[tuple[str, Path]] = []

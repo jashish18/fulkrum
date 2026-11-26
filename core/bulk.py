@@ -119,6 +119,9 @@ def check(p: TaskPlan) -> TaskPlan:
         except ValueError as e:
             p.problems.append(f"zip: {e}")
             p.staged = None
+        except OSError as e:  # e.g. a folder locked by OneDrive or antivirus
+            p.problems.append(f"zip: couldn't unpack it ({e.strerror or e}). Try Check files again.")
+            p.staged = None
     if p.report_data:
         names = [f.name for f in p.staged.files] if p.staged else []
         try:

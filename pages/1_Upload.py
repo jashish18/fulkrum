@@ -26,15 +26,20 @@ with tab_bulk:
     sig = tuple((u.name, u.size) for u in ups or [])
     if ups and st.session_state.get("bulk_sig") != sig:
         if st.button("Check files", type="primary"):
-            with st.spinner("Opening every file…"):
-                plans, unmatched = bulk.group([(u.name, u.getvalue()) for u in ups])
-                prog = st.progress(0.0)
-                for i, p_ in enumerate(plans.values(), 1):
-                    bulk.check(p_)
-                    prog.progress(i / max(len(plans), 1))
-            st.session_state["bulk_plans"], st.session_state["bulk_unmatched"] = plans, unmatched
-            st.session_state["bulk_sig"] = sig
-            st.rerun()
+            try:
+                with st.spinner("Opening every file…"):
+                    plans, unmatched = bulk.group([(u.name, u.getvalue()) for u in ups])
+                    prog = st.progress(0.0)
+                    for i, p_ in enumerate(plans.values(), 1):
+                        prog.progress((i - 1) / max(len(plans), 1), text=f"Checking task {p_.task}…")
+                        bulk.check(p_)
+                    prog.progress(1.0, text="Done")
+                st.session_state["bulk_plans"], st.session_state["bulk_unmatched"] = plans, unmatched
+                st.session_state["bulk_sig"] = sig
+                st.rerun()
+            except Exception as e:  # noqa: BLE001 - never show a traceback
+                st.error(f"Couldn't open the files: {e}. Click Check files again; if it keeps failing, "
+                         "send a screenshot of this message.")
     plans = st.session_state.get("bulk_plans") if ups and st.session_state.get("bulk_sig") == sig else None
     if plans is not None:
         for n in st.session_state.get("bulk_unmatched") or []:
@@ -166,6 +171,9 @@ with tab_zip:
         except ValueError as e:
             st.session_state.pop("staged", None)
             st.error(str(e))
+        except OSError as e:
+            st.session_state.pop("staged", None)
+            st.error(f"Couldn't unpack {up.name} ({e.strerror or e}). Try uploading it again.")
 
     staged: Staged | None = st.session_state.get("staged")
     if staged is not None:
