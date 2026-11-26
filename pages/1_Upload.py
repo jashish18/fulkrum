@@ -51,7 +51,9 @@ with tab_report:
             if st.button("Save report", type="primary", key="save_report"):
                 try:
                     with st.spinner("Saving…"):
-                        save_report(rep)
+                        new_rid = save_report(rep)
+                        from core import impact
+                        impact.prepare(new_rid, user)
                     st.success("Report saved. Open **Cards** in the sidebar to see it.")
                 except Exception as e:  # noqa: BLE001
                     st.error(f"Saving failed: {e}")

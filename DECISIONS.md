@@ -48,3 +48,20 @@ Where the spec is silent, the simplest option was chosen and recorded here.
 8. **Cache.** Results are reused when the full request is identical: file text, rubric section, prompt, model and prompt version. This matches the spec's key (file hash, rubric hash, model, prompt version) in effect.
 9. **Long sheets.** Sheets over 300 rows are sent as header plus row counts, as the spec says. Targeted lookups into the full data aren't built yet; the gold and model outputs in both samples are well under 300 rows.
 10. **Score formula** setting offers "(earned − penalty) / positive_total" (default) and "earned / positive_total". Earned / positive total is always shown too.
+
+## Phase 4 – Step 1 scenarios
+
+1. **Where ops come from.** The LLM suggests ops per option (button on each option). Without an LLM, simple rule-based ops are added automatically for prompt and reference edits the parsed impacts already state, so the re-run badge works anyway. Ops can be added by hand as JSON, confirmed or removed; every user change is audited. Ops sources are `llm`, `rule` and `user` (the spec lists only `llm` and `user`).
+2. **Unconfirmed ops count** in projections, so the effect shows straight away; each op shows whether it's confirmed.
+3. **Baseline** is the version whose label matches the report's flagged version, else the latest upload. Grades use the confirmed result where set, otherwise the grader's agreed result, with a note that the baseline isn't locked.
+4. **Decision keys.** Options 1–3, `fix`, `agree` (apply the fix), `disagree` / `keep` (no change), and `new` (a new option the user writes and gives ops). A Part 2 option whose text starts "Keep" or "Leave" counts as keep.
+5. **Decision sources.** The card's form saves `final` when "Final" is ticked, otherwise `expert` (a working call). Unticking Final removes the earlier final call. An Expert call written in the report is imported as `expert`. Precedence follows the spec: final, then expert, then the QA reading.
+6. **Scope** limits a decision's criterion ops to the listed criteria. Ops that name no criterion (prompt, reference) still apply.
+7. **Added criteria** are assumed failed by the model and passed by the gold unless the op says otherwise (`model_result` / `gold_result`). The task page shows this assumption.
+8. **accept_alternative** compares numbers in the model's grade evidence with the alternative at the alternative's decimal places (percent-aware). When the evidence has no number, the page asks the user to set the op's `model_result`.
+9. **Failure-note backing** is the points of mapped criteria the model still fails (plus triggered penalties). A note is *holds* at baseline backing, *weakened* below it and *gone* at zero.
+10. **QA reading.** The LLM reads QA comments when configured. A rule-based reader of the spec's guidance phrases runs otherwise, and its ambiguity warning is kept if the LLM sees none. "Agree/Aligned with defense" maps to the keep option only when every prior stance is Objected, Defended or Kept. Otherwise it is AMBIGUOUS, which is why task 35's 2.5, 2.6, 2.7 and 2.9 (prior stance "Fixed") are flagged.
+11. **BREAK on a card** means removing that card's decision would remove at least one of the task's break conditions.
+12. **CONFLICT** covers three cases. (a) Two cards' decided ops hit the same criterion, step, prompt or reference cell/row with different effects. (b) A card kept as is, while another card changes something one of the kept card's other options would have changed. For example, 2.12 keeps the S26-0363 record, which its Option 3 would change, and 1b.13 changes it. (c) Folded or "decide together" cards decided in opposite directions (keep vs change).
+13. **REVERSAL** lists the refusing prior stances (Objected, Defended, Kept) whose comment names a criterion in the decision's scope, or names none. Saving such a decision requires a note.
+14. **Batch by rule** saves a working (expert) decision on each card with that rule, skipping cards that don't have the chosen option. Each card is then reviewed and made final on the Cards page.
