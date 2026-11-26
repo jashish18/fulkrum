@@ -257,3 +257,18 @@ class AuditLog(Base):
     before_json: Mapped[str | None] = mapped_column(Text)
     after_json: Mapped[str | None] = mapped_column(Text)
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class PriorQAItem(Base):
+    """Rows of the prior QA sheet (spec 3.3); used to show the full text behind "QA #n"."""
+
+    __tablename__ = "prior_qa_items"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[int] = mapped_column(ForeignKey("tasks.id"))
+    source: Mapped[str | None] = mapped_column(String(512))
+    qa_no: Mapped[int] = mapped_column(Integer)
+    feedback: Mapped[str | None] = mapped_column(Text)
+    comment: Mapped[str | None] = mapped_column(Text)
+    check_code_location: Mapped[str | None] = mapped_column(Text)
+    qa_comment: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str | None] = mapped_column(String(64))

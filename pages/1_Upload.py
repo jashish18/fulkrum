@@ -1,5 +1,6 @@
 """Upload page: task zip -> role confirm screen -> saved version."""
 import json
+import re
 
 import streamlit as st
 
@@ -13,9 +14,64 @@ st.title("Upload")
 tab_zip, tab_report, tab_qa = st.tabs(["Task zip", "Rework report", "Prior QA sheet"])
 
 with tab_report:
-    st.info("Rework report import arrives in Phase 2.")
+    rup = st.file_uploader("Rework report (batch_2_rework_checks_<task> - by part.xlsx)", type=["xlsx"],
+                           key="report_upl")
+    if rup is not None:
+        from core.report_parser import ReportError, parse_report, save_report
+        from db.models import File, Task, Version
+        from db.session import session_scope
+
+        try:
+            # File names from the task's latest version let the parser spot file references.
+            names: list[str] = []
+            m = re.search(r"rework_checks_0*(\d+)", rup.name)
+            with session_scope() as s:
+                if m:
+                    task = s.query(Task).filter_by(task_code=m.group(1)).one_or_none()
+                    if task and task.versions:
+                        v = max(task.versions, key=lambda v: v.uploaded_at)
+                        names = [f.name for f in s.query(File).filter_by(version_id=v.id)]
+            rep = parse_report(rup.getvalue(), rup.name, names)
+        except ReportError as e:
+            st.error(str(e))
+            rep = None
+        except Exception as e:  # noqa: BLE001 - never crash the page
+            st.error(f"Couldn't read {rup.name}: {e}")
+            rep = None
+        if rep is not None:
+            c = rep.counts()
+            st.success(f"Task {rep.task}, flagged at {rep.flagged_version}: {c['rows']} rows in "
+                       f"{c['groups']} cards. The counts match the summary line.")
+            st.dataframe(
+                [{"Part": p, "Cards": v["groups"], "Rows": v["rows"]} for p, v in c["parts"].items()],
+                hide_index=True,
+            )
+            for w in rep.warnings:
+                st.warning(w)
+            if st.button("Save report", type="primary", key="save_report"):
+                try:
+                    with st.spinner("Saving…"):
+                        save_report(rep)
+                    st.success("Report saved. Open **Cards** in the sidebar to see it.")
+                except Exception as e:  # noqa: BLE001
+                    st.error(f"Saving failed: {e}")
+
 with tab_qa:
-    st.info("Prior QA sheet import arrives in Phase 2.")
+    st.caption("Optional. A QA sheet inside the task zip is loaded automatically.")
+    qup = st.file_uploader("Prior QA sheet (qa_feedback_<task>_grouped.xlsx)", type=["xlsx"], key="qa_upl")
+    if qup is not None:
+        from core.report_parser import ReportError, parse_qa_sheet, save_qa_items
+
+        m = re.search(r"qa_feedback_0*(\d+)", qup.name)
+        qtask = st.text_input("Task number", value=m.group(1) if m else "", key="qa_task")
+        try:
+            items = parse_qa_sheet(qup.getvalue(), qup.name)
+            st.write(f"{len(items)} QA items found.")
+            if st.button("Save QA sheet", disabled=not qtask):
+                save_qa_items(qtask.strip(), items, qup.name)
+                st.success("Saved.")
+        except ReportError as e:
+            st.error(str(e))
 
 with tab_zip:
     up = st.file_uploader("Task zip", type=["zip"], key="zip_upl")

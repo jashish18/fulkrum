@@ -382,7 +382,23 @@ def save_version(staged: Staged, task_code: str, label: str, roles: dict[str, st
                                 category=c["category"], references_json=json.dumps(c["references"])))
         s.flush()
         _refresh_failure_notes(s, version)
-        return version.id
+        vid = version.id
+    _load_qa_sheets(staged, task_code, roles)
+    return vid
+
+
+def _load_qa_sheets(staged: Staged, task_code: str, roles: dict[str, str]) -> None:
+    """A prior QA sheet inside the zip is loaded the same way as an uploaded one."""
+    from core.report_parser import ReportError, parse_qa_sheet, save_qa_items
+
+    for sf in staged.files:
+        if roles.get(sf.name, sf.role) == "qa_sheet":
+            try:
+                items = parse_qa_sheet(Path(sf.path).read_bytes(), sf.name)
+            except ReportError as e:
+                staged.warnings.append(str(e))
+                continue
+            save_qa_items(task_code, items, sf.name)
 
 
 def _refresh_failure_notes(s, version) -> None:

@@ -21,7 +21,7 @@ Acceptance tests use the files in `samples/` (gitignored) and are skipped when i
 ## Status
 
 - [x] P1 Ingest and extraction
-- [ ] P2 Report parser
+- [x] P2 Report parser
 - [ ] P3 Grading and review
 - [ ] P4 Step 1 scenarios
 - [ ] P5 Write-back

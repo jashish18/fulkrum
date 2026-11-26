@@ -19,3 +19,19 @@ Where the spec is silent, the simplest option was chosen and recorded here.
 13. **Failure notes** are split into items by numbered lines (`1.`, `1)`, `Failure 1:`), else bullets, else blank-line paragraphs. Checked on the samples: task 45 gives 2 numbered notes, task 35 gives 4 bulleted notes.
 14. **Extractions** are saved as JSON under `DATA_DIR/versions/<id>/extract/`; `files.text_path` holds the path relative to `DATA_DIR`.
 15. **Python version.** The spec says 3.11; the code avoids anything newer and the Dockerfile will use `python:3.11-slim`. Tests were run here on Python 3.13.
+
+## Phase 2 – Report parser
+
+1. **Summary line** is read from the first text cell of the `Task <id>` sheet (falling back to `Part 2`). The import fails with a message if the total rows/groups or any per-part count differs from what was parsed.
+2. **Defense quotes.** The spec names curly quotes; the sample reports use straight quotes. Both are accepted. A quote ends only where the next `QA #` entry (or the cell) begins, so quotes inside a comment don't cut it short.
+3. **Section labels** are matched only from the fixed list in the spec, at the start of a line. `Hence:` is also matched mid-line because the reports put it at the end of the Issue paragraph. Other prose with a colon ("But nothing says so:") is left alone.
+4. **"Clear fix:" vs "Proposed fix:".** In the samples, a 1b row always has "Proposed fix:" for the fix itself, and "Clear fix:" / "Ask the expert:" as the judgement line. The fix text is taken from "Proposed fix:", then "Clear fix:", then "Fix:" (1a rows).
+5. **Folded Part 2 rows** sometimes carry a proposed fix instead of options (e.g. task 35, Category 2, row 39 under card 2.1). These count as parsed; they follow the lead row's decision.
+6. **Card options** are the lead row's options. Folded rows keep their own parsed text too.
+7. **Card links.** `decide_together` links are stored both ways. A row folded under a row of another card adds a `folded` link (none occur in the samples). Every "Category N, row M" cross-reference to a row in another card adds a `mentions` link.
+8. **Criteria ranges** like "[6.12] to [6.15]" are also expanded into the full list, kept beside the plain matches.
+9. **Bare cell references** skip tokens that look like codes rather than cells (FY26, Q1, AG-B2, S26-0363…). A few false hits may remain; they are only used as hints.
+10. **Prior QA sheet** rows are stored in an extra table `prior_qa_items` (the spec's data model has no table for them). A QA sheet found inside the task zip is loaded automatically; it can also be uploaded on its own.
+11. **LLM fallback** runs only for rows the regex parser couldn't complete. Both sample reports parse fully without it. If no LLM key is set, those rows are kept as raw text and a warning is shown.
+12. **LLM responses** are cached as JSON files under `DATA_DIR/llm_cache/`, keyed by a hash of model, prompt version, messages and schema, because `llm_calls` has no column for the response.
+13. **Re-importing** the same report (same task, file name and flagged version) replaces its cards and rows rather than adding a second copy.
