@@ -109,7 +109,8 @@ with tab_zip:
 
         col1, col2 = st.columns(2)
         task_code = col1.text_input("Task number", value=staged.suggested_task or "")
-        label = col2.text_input("Version label", value=staged.suggested_label or "",
+        label = col2.text_input("Version label (required)", value=staged.suggested_label or "",
+                                placeholder="e.g. v20, the version the rework report was flagged at",
                                 help="Prefilled from a v<number> in the zip name. Use a new label for a revised version, even if the zip is the same.")
 
         table = [
@@ -134,7 +135,12 @@ with tab_zip:
         if problems:
             st.warning("Check the roles: " + ", ".join(problems) + ".")
 
-        if st.button("Confirm and save", type="primary", disabled=not (task_code and label)):
+        missing = [n for n, v in (("a task number", task_code), ("a version label", label)) if not v.strip()]
+        if missing:
+            st.info(f"Type {' and '.join(missing)} above to enable **Confirm and save**. Use the version the "
+                    "rework report was flagged at (e.g. v20) for the baseline, and a new label for a revised "
+                    "version. Press Enter after typing so the app picks it up.")
+        if st.button("Confirm and save", type="primary", disabled=bool(missing)):
             try:
                 with st.spinner("Extracting file contents…"):
                     vid = save_version(staged, task_code.strip(), label.strip(), roles)
