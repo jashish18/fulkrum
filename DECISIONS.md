@@ -65,3 +65,13 @@ Where the spec is silent, the simplest option was chosen and recorded here.
 12. **CONFLICT** covers three cases. (a) Two cards' decided ops hit the same criterion, step, prompt or reference cell/row with different effects. (b) A card kept as is, while another card changes something one of the kept card's other options would have changed. For example, 2.12 keeps the S26-0363 record, which its Option 3 would change, and 1b.13 changes it. (c) Folded or "decide together" cards decided in opposite directions (keep vs change).
 13. **REVERSAL** lists the refusing prior stances (Objected, Defended, Kept) whose comment names a criterion in the decision's scope, or names none. Saving such a decision requires a note.
 14. **Batch by rule** saves a working (expert) decision on each card with that rule, skipping cards that don't have the chosen option. Each card is then reviewed and made final on the Cards page.
+
+## Phase 5 – Write-back
+
+1. **Only final decisions are written.** Working calls (expert or QA reading) that aren't ticked Final stay out of the workbook, so nothing half-decided reaches the report. A card whose final call is "unclear" is skipped.
+2. **The report's own dropdown words are used.** Part 2: "Option N" (with the scope in brackets when the decision covers only some criteria, e.g. "Option 2 (6.13–6.15)"); a keep decision becomes the card's keep-as-is option number, or "Dismiss" if it has none. Part 1b: "Agree" or "Disagree". Part 1a: a blank call lets the fixer go ahead, so an agree decision leaves the cell blank and a disagree or keep decision writes "Hold". A new option the expert typed is written as "Edited" (Part 1a: "Hold") with "Edited: <text>" at the start of the Expert note.
+3. **Folded cards** are written on the card's lead row only. The other rows of the card are left as they are.
+4. **Formula cells are never overwritten.** If an Expert call or Expert note cell holds a formula, it is skipped and listed on the download panel. The overview sheet's formulas that mirror the Part tabs are kept, so they pick up the new calls when Excel recalculates.
+5. **The original upload is stored** at `DATA_DIR/reports/<id>/original.xlsx` and never changed; each download is a fresh copy. Reports saved before Phase 5 have no stored original, so upload them again to enable the download.
+6. **Dashboard summary sheet** is replaced if the report already has one. Its projected scores per card apply that card's final decision on top of every other current decision.
+7. **File name**: `<report name> - decisions <YYYY-MM-DD>.xlsx`.

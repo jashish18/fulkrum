@@ -60,6 +60,29 @@ for b in fl["task_breaks"]:
 for n in proj["notes"]:
     st.info(n)
 
+# ---- write-back (spec 11) -------------------------------------------------------
+with st.expander("Download decisions workbook"):
+    n_final = sum(1 for c in state.cards.values() if (c.decisions.get("final") or {}).get("option_key"))
+    st.caption(f"A copy of the uploaded report with the {n_final} final decision(s) written into the "
+               "Expert call and Expert note columns, plus a Dashboard summary sheet. Working calls "
+               "that aren't ticked Final are not written. The uploaded original is never changed.")
+    if st.button("Build workbook", key="wb_build"):
+        from core import writeback
+
+        try:
+            data, fname, info = writeback.build_decisions_workbook(rid)
+            st.session_state["wb_out"] = (rid, data, fname, info)
+        except FileNotFoundError as e:
+            st.error(str(e))
+    out = st.session_state.get("wb_out")
+    if out and out[0] == rid:
+        _, data, fname, info = out
+        st.download_button(f"Download {fname}", data, file_name=fname,
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        st.write(f"{len(info['written'])} cell(s) written.")
+        for s_ in info["skipped"]:
+            st.warning(s_)
+
 # ---- failure notes --------------------------------------------------------------
 st.subheader("Failure notes")
 for idx, text in sorted(state.failure_notes.items()):

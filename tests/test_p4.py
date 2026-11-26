@@ -28,7 +28,7 @@ def _setup(task, label, model_fails):
     grading.grade_file(vid, mf, call=fake_grader(fails=model_fails))
     grading.grade_file(vid, gf, call=fake_grader())
     rp = SAMPLES / f"batch_2_rework_checks_{task} - by part.xlsx"
-    rid = save_report(parse_report(rp.read_bytes(), rp.name), use_llm=False)
+    rid = save_report(parse_report(rp.read_bytes(), rp.name), use_llm=False, data=rp.read_bytes())
     return vid, rid
 
 

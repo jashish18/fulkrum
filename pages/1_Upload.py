@@ -51,7 +51,7 @@ with tab_report:
             if st.button("Save report", type="primary", key="save_report"):
                 try:
                     with st.spinner("Saving…"):
-                        new_rid = save_report(rep)
+                        new_rid = save_report(rep, data=rup.getvalue())
                         from core import impact
                         impact.prepare(new_rid, user)
                     st.success("Report saved. Open **Cards** in the sidebar to see it.")

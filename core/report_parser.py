@@ -262,7 +262,8 @@ def parse_qa_sheet(data: bytes, filename: str) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
-def save_report(rep: ParsedReport, task_code: str | None = None, use_llm: bool = True) -> int:
+def save_report(rep: ParsedReport, task_code: str | None = None, use_llm: bool = True,
+                data: bytes | None = None) -> int:
     """Write a parsed report to the database. Returns the report id.
 
     Rows the regex parser couldn't complete go to the LLM fallback when it is configured.
@@ -327,7 +328,16 @@ def save_report(rep: ParsedReport, task_code: str | None = None, use_llm: bool =
         for a, b, kind in rep.links:
             if a in card_ids and b in card_ids:
                 s.merge(CardLink(card_id=card_ids[a], linked_card_id=card_ids[b], kind=kind))
+        if data is not None:
+            report_original_path(report.id).write_bytes(data)
         return report.id
+
+
+def report_original_path(report_id: int):
+    """The uploaded report, kept unmodified under DATA_DIR."""
+    from core import config
+
+    return config.data_path("reports", str(report_id), "original.xlsx")
 
 
 def _delete_report_children(s, report_id: int) -> None:
