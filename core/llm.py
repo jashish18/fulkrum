@@ -76,7 +76,7 @@ def call_json(purpose: str, prompt_version: str, system: str, user: str, schema:
             extra_body=extra,
         )
     except Exception as e:  # noqa: BLE001
-        raise LLMError(str(e)) from e
+        raise LLMError(friendly_error(str(e), model)) from e
     latency = int((time.time() - t0) * 1000)
     content = resp.choices[0].message.content or "{}"
     try:
@@ -87,6 +87,24 @@ def call_json(purpose: str, prompt_version: str, system: str, user: str, schema:
     _log(purpose, model, prompt_version, usage, latency, h)
     cache.write_text(json.dumps(out))
     return out
+
+
+def friendly_error(msg: str, model: str | None = None) -> str:
+    """A plain message for the errors people actually hit; the raw text stays at the end."""
+    low = msg.lower()
+    m = f"`{model}`" if model else "the chosen model"
+    if "data policy" in low or "zero data retention" in low:
+        return (f"{m} has no provider on OpenRouter that offers zero data retention (ZDR), so the request "
+                "was refused. On the Settings page, pick a model marked \"ZDR\", or untick \"Zero data "
+                "retention\" there if you're happy to use a provider that may keep data. "
+                f"(OpenRouter said: {msg[:200]})")
+    if "401" in low or "invalid api key" in low or "no auth" in low:
+        return f"OpenRouter didn't accept the API key. Check LLM_API_KEY in your .env file. (OpenRouter said: {msg[:200]})"
+    if "402" in low or "insufficient credits" in low:
+        return f"Your OpenRouter account is out of credits. (OpenRouter said: {msg[:200]})"
+    if "404" in low and "model" in low:
+        return f"OpenRouter doesn't know the model {m}. Pick another on the Settings page. (OpenRouter said: {msg[:200]})"
+    return msg
 
 
 def _log(purpose, model, prompt_version, usage, latency, h) -> None:
@@ -162,3 +180,62 @@ def list_models() -> tuple[list[dict[str, Any]], str | None]:
         except Exception as e:  # noqa: BLE001
             last_err = str(e)
     return [], last_err or "No models returned"
+
+
+_MODEL_ID_RX = None
+
+
+def _model_id_of(entry: Any) -> str | None:
+    """Find the model id in one ZDR endpoint entry, whatever the exact field name is."""
+    import re
+
+    global _MODEL_ID_RX
+    _MODEL_ID_RX = _MODEL_ID_RX or re.compile(r"^[a-z0-9][\w.\-]*/[\w.\-:]+$", re.I)
+    if isinstance(entry, str):
+        return entry if _MODEL_ID_RX.match(entry) else None
+    if not isinstance(entry, dict):
+        return None
+    for k in ("model_id", "model", "id", "slug", "model_slug", "canonical_slug"):
+        v = entry.get(k)
+        if isinstance(v, str) and _MODEL_ID_RX.match(v):
+            return v
+        if isinstance(v, dict):
+            got = _model_id_of(v)
+            if got:
+                return got
+    name = entry.get("name")
+    if isinstance(name, str) and "|" in name:  # "Provider | author/model"
+        tail = name.split("|", 1)[1].strip()
+        if _MODEL_ID_RX.match(tail):
+            return tail
+    for v in entry.values():
+        if isinstance(v, str) and _MODEL_ID_RX.match(v):
+            return v
+    return None
+
+
+def zdr_models() -> tuple[set[str] | None, str | None]:
+    """Model ids that have at least one zero-data-retention endpoint on OpenRouter (GET /endpoints/zdr).
+
+    Returns (ids, error); ids is None when the list can't be fetched. OpenRouter notes the list can
+    also include "safety retention" endpoints, used only if the account allows them.
+    """
+    import urllib.error
+    import urllib.request
+
+    if not config.LLM_API_KEY:
+        return None, "LLM_API_KEY isn't set"
+    req = urllib.request.Request(config.LLM_BASE_URL.rstrip("/") + "/endpoints/zdr",
+                                 headers={"Authorization": f"Bearer {config.LLM_API_KEY}"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            data = json.loads(r.read().decode())
+    except urllib.error.HTTPError as e:
+        return None, f"HTTP {e.code}"
+    except Exception as e:  # noqa: BLE001
+        return None, str(e)
+    items = data.get("data", data) if isinstance(data, dict) else data
+    ids = {m for m in (_model_id_of(x) for x in (items or [])) if m}
+    for i in list(ids):  # "author/model:variant" also counts for the base id
+        ids.add(i.split(":", 1)[0])
+    return (ids or None), (None if ids else "the ZDR list came back empty or in an unexpected shape")

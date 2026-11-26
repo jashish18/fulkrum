@@ -146,3 +146,13 @@ def test_real_task45_model():
     grading.grade_file(vid, fid)
     sc = grading.file_score(vid, fid)
     print("45 model", sc["score_pct"], sorted(sc["failed"]))
+
+
+def test_zdr_helpers():
+    from core import llm
+
+    assert llm._model_id_of({"name": "Amazon Bedrock | anthropic/claude-opus-4.1"}) == "anthropic/claude-opus-4.1"
+    assert llm._model_id_of({"model_id": "openai/gpt-5", "provider_name": "Azure"}) == "openai/gpt-5"
+    msg = llm.friendly_error("Error code: 404 - No endpoints found matching your data policy (Zero data "
+                             "retention).", "anthropic/claude-opus-5.5")
+    assert "zero data retention" in msg and "Settings page" in msg
