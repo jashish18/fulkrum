@@ -333,8 +333,9 @@ def save_version(staged: Staged, task_code: str, label: str, roles: dict[str, st
                  title: str | None = None) -> int:
     """Persist a confirmed upload. Returns the version id.
 
-    Re-uploading an identical zip for the same task reuses the existing version
-    (and updates its roles if they were corrected).
+    Re-uploading an identical zip under the same label reuses the existing version
+    (and updates its roles if they were corrected). The same zip under a new label
+    is saved as a new version, so it can be verified against the baseline.
     """
     from db.models import Criterion, FailureNote, File, Task, Version
     from db.session import session_scope
@@ -345,7 +346,7 @@ def save_version(staged: Staged, task_code: str, label: str, roles: dict[str, st
             task = Task(task_code=task_code, title=title)
             s.add(task)
             s.flush()
-        existing = s.query(Version).filter_by(task_id=task.id, zip_sha256=staged.zip_sha256).one_or_none()
+        existing = s.query(Version).filter_by(task_id=task.id, zip_sha256=staged.zip_sha256, label=label).one_or_none()
         if existing is not None:
             for f in existing.files:
                 if f.name in roles and roles[f.name] != f.role:

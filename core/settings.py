@@ -23,6 +23,16 @@ def get(key: str) -> str:
     return DEFAULTS[key]()
 
 
+def get_raw(key: str) -> str | None:
+    """A stored value with no default (e.g. per-report choices)."""
+    from db.models import Setting
+    from db.session import session_scope
+
+    with session_scope() as s:
+        row = s.get(Setting, key)
+        return row.value if row is not None and row.value not in (None, "") else None
+
+
 def get_float(key: str) -> float:
     try:
         return float(get(key))

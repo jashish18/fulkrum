@@ -3,7 +3,7 @@ import json
 
 import streamlit as st
 
-from core import impact, llm, settings
+from core import impact, llm, settings, verify
 from core import ops as opsmod
 from core.auth import require_auth
 from core.ingest import load_text
@@ -97,6 +97,18 @@ tabs = st.tabs(["Cards", "Prompt & References", "Rubric", "Trajectory", "Gold", 
                 "No change (keep/defend)", "Grades", "Verification", "History"])
 
 
+try:
+    verified = verify.verified_cards(rid)
+except Exception:  # noqa: BLE001 - a status badge must never break the page
+    verified = set()
+
+
+def _status(code: str, decided: bool) -> str:
+    if not decided:
+        return "possible"
+    return "verified" if code in verified else "decided"
+
+
 def changes_for(artifacts: set[str]):
     rows = []
     for code, card in state.cards.items():
@@ -106,14 +118,14 @@ def changes_for(artifacts: set[str]):
             for o in lst:
                 if opsmod.ARTIFACT_OF_OP.get(o.get("type")) in artifacts:
                     rows.append({"Card": code, "Option": k, "Change": opsmod.describe(o),
-                                 "Status": "decided" if k == dk else "possible"})
+                                 "Status": _status(code, k == dk)})
         for i in card.impacts:
             if i["artifact"] in artifacts and i.get("option_scope"):
                 if not any(r["Card"] == code and r["Change"] == i["text"] for r in rows):
                     keys = i["option_scope"].split(",")
                     rows.append({"Card": code, "Option": i["option_scope"], "Change": i["text"],
-                                 "Status": "decided" if dk in keys else "possible"})
-    rows.sort(key=lambda r: (r["Status"] != "decided", r["Card"]))
+                                 "Status": _status(code, dk in keys)})
+    rows.sort(key=lambda r: (r["Status"] == "possible", r["Card"]))
     return rows
 
 
@@ -170,7 +182,101 @@ with tabs[7]:
         st.write(f"Gold fails: {', '.join(base['gold']['failed']) or 'none'}")
 
 with tabs[8]:
-    st.info("Verification of a revised version arrives in Phase 6.")
+    from db.models import Version
+
+    with session_scope() as s:
+        all_versions = [(v.id, v.label) for v in
+                        s.query(Version).filter_by(task_id=state.task_id).order_by(Version.uploaded_at)]
+    labels = {vid_: lab for vid_, lab in all_versions}
+    st.markdown(f"**Baseline:** {state.version_label}. The report's flagged version is "
+                f"{state.flagged_version or 'not stated'}.")
+    with st.expander("Use another baseline"):
+        b_pick = st.selectbox("Baseline version", [v for v, _ in all_versions],
+                              index=[v for v, _ in all_versions].index(state.version_id),
+                              format_func=lambda v: labels[v], key="baseline_pick")
+        if b_pick != state.version_id and st.button("Set as baseline"):
+            settings.put(impact.baseline_key(rid), str(b_pick), user)
+            st.rerun()
+    others = [v for v, _ in all_versions if v != state.version_id]
+    if not others:
+        st.info("Upload the revised task zip on the Upload page (as a new version label) to verify it here.")
+    else:
+        new_vid = st.selectbox("Revised version", others, index=len(others) - 1, format_func=lambda v: labels[v],
+                               key="verify_new")
+        use_ai = st.checkbox("Use the AI for changes a rule can't check", value=llm.is_configured(),
+                             disabled=not llm.is_configured(), key="verify_ai")
+        if st.button("Run verification", type="primary"):
+            try:
+                with st.spinner("Comparing the versions…"):
+                    verify.run(rid, new_vid, use_llm=use_ai, user=user)
+            except Exception as e:  # noqa: BLE001
+                st.error(f"Verification failed: {e}")
+        res = verify.load(rid, new_vid)
+        if not res["expected"] and not res["untracked"]:
+            st.write("Not run yet for this version." if not any(
+                c.decisions.get("final") for c in state.cards.values())
+                else "Run the verification to see the results.")
+        else:
+            cnt = res["counts"]
+            st.markdown(" · ".join(f"**{k}** {v}" for k, v in cnt.items()) +
+                        f" · **untracked** {len(res['untracked'])}")
+            rr = res["rerun"]
+            if rr["required"]:
+                msg = f"Re-run required (cards {', '.join(rr['cards'])}): {rr['status']}."
+                if "model" in rr:
+                    msg += f" New model score {rr['model']['score_pct']:.1%}" + \
+                        (" — BREAK." if rr["model_breaks"] else ".")
+                    gone = [str(i) for i, b in rr.get("failure_notes", {}).items() if not b]
+                    if gone:
+                        msg += f" Failure note(s) {', '.join(gone)} have no failing criterion left."
+                elif rr["status"] == "new output uploaded":
+                    msg += " Grade the new model output on the Grades page to re-check the thresholds."
+                (st.warning if rr["status"] != "not required" else st.info)(msg)
+
+            st.markdown("#### Expected changes")
+            st.caption("Change a result to override it. Overrides are kept when you run the check again.")
+            table = [{"Id": e["verification_id"], "Card": e["card"], "Artifact": e["artifact"],
+                      "Expected change": e["description"], "Result": e["result"],
+                      "Automatic": e["auto"] or "", "Override by": e["override_by"] or "",
+                      "Evidence": e["evidence"]} for e in res["expected"]]
+            edited = st.data_editor(
+                table, hide_index=True, width="stretch", key=f"ver_{rid}_{new_vid}",
+                column_config={"Result": st.column_config.SelectboxColumn("Result", options=verify.RESULTS,
+                                                                          required=True),
+                               "Id": None},
+                disabled=["Card", "Artifact", "Expected change", "Automatic", "Override by", "Evidence"])
+            changed = [(r_["Id"], r_["Result"]) for r_, o in zip(edited, table) if r_["Result"] != o["Result"]]
+            if changed and st.button(f"Save {len(changed)} override(s)"):
+                for vid_, r_ in changed:
+                    verify.override(vid_, r_, user)
+                st.rerun()
+
+            st.markdown("#### Changes no card explains")
+            if not res["untracked"]:
+                st.write("None.")
+            else:
+                ut = [{"Id": u["id"], "Artifact": u["artifact"], "Change": u["desc"], "Where": u["loc"] or "",
+                       "Status": u["status"]} for u in res["untracked"]]
+                ued = st.data_editor(
+                    ut, hide_index=True, width="stretch", key=f"unt_{rid}_{new_vid}",
+                    column_config={"Status": st.column_config.SelectboxColumn(
+                        "Status", options=verify.UNTRACKED_STATUSES), "Id": None},
+                    disabled=["Artifact", "Change", "Where"])
+                uchg = [(r_["Id"], r_["Status"] or "") for r_, o in zip(ued, ut) if (r_["Status"] or "") != o["Status"]]
+                if uchg and st.button(f"Save {len(uchg)} status change(s)"):
+                    for uid, stt_ in uchg:
+                        verify.set_untracked_status(uid, stt_, user)
+                    st.rerun()
+
+            st.markdown("#### Integrity checks")
+            for vid_ in (state.version_id, new_vid):
+                st.caption(f"Version {labels[vid_]}")
+                st.dataframe([{"": {True: "✅", False: "❌", None: "–"}[c["ok"]], "Check": c["check"],
+                               "Detail": c["detail"]} for c in verify.integrity(vid_)],
+                             hide_index=True, width="stretch")
+            data_, fname_ = verify.build_workbook(rid, new_vid)
+            st.download_button(f"Download {fname_}", data_, file_name=fname_,
+                               mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 with tabs[9]:
     with session_scope() as s:

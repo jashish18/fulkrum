@@ -44,6 +44,7 @@ class CardState:
     rows: list[dict[str, Any]]
     criteria_list: str | None = None
     theme: str | None = None
+    row_fix_texts: list[str] = field(default_factory=list)  # fix text of the card's other (folded) rows
 
 
 @dataclass
@@ -67,22 +68,43 @@ class TaskState:
     cards: dict[str, CardState] = field(default_factory=dict)
     file_names: list[str] = field(default_factory=list)
     prompt_text: str = ""
+    file_roles: dict[str, str] = field(default_factory=dict)
 
     @property
     def has_grades(self) -> bool:
         return bool(self.model_results)
 
 
-def _baseline_version(s, task_id: int, flagged: str | None):
+def baseline_key(report_id: int) -> str:
+    return f"BASELINE_VERSION_{report_id}"
+
+
+def _baseline_version(s, task_id: int, flagged: str | None, report_id: int | None = None,
+                      uploaded_at=None):
+    """The user's pick, else the report's flagged version, else the last one uploaded before the report."""
+    from core import settings
     from db.models import Version
 
-    vs = s.query(Version).filter_by(task_id=task_id).order_by(Version.uploaded_at).all()
+    vs = s.query(Version).filter_by(task_id=task_id).order_by(Version.uploaded_at, Version.id).all()
     if not vs:
         return None
+    if report_id is not None:
+        pick = settings.get_raw(baseline_key(report_id))
+        for v in vs:
+            if pick and str(v.id) == pick:
+                return v
     for v in vs:
         if flagged and v.label.lower() == flagged.lower():
             return v
-    return vs[-1]
+    if uploaded_at is not None:
+        before = [v for v in vs if _naive(v.uploaded_at) <= _naive(uploaded_at)]
+        if before:
+            return before[-1]
+    return vs[0]
+
+
+def _naive(t):
+    return t.replace(tzinfo=None) if t is not None and t.tzinfo else t
 
 
 def _results(s, file_id: int | None) -> tuple[dict[str, str], dict[str, str]]:
@@ -122,7 +144,7 @@ def load_state(report_id: int) -> TaskState:
     with session_scope() as s:
         rep = s.get(Report, report_id)
         task = s.get(Task, rep.task_id)
-        v = _baseline_version(s, task.id, rep.flagged_version)
+        v = _baseline_version(s, task.id, rep.flagged_version, report_id, rep.uploaded_at)
         crits: dict[str, dict[str, Any]] = {}
         order: list[str] = []
         files: list = []
@@ -154,6 +176,7 @@ def load_state(report_id: int) -> TaskState:
             baseline_locked={"model": bool(model_f and locks.get(model_f.id)),
                              "gold": bool(gold_f and locks.get(gold_f.id))},
             failure_notes=notes, failure_map=fmap, file_names=[f.name for f in files], prompt_text=prompt,
+            file_roles={f.name: f.role for f in files},
         )
         cards = s.query(Card).filter_by(report_id=report_id).order_by(Card.id).all()
         code_by_id = {c.id: c.code for c in cards}
@@ -191,6 +214,8 @@ def load_state(report_id: int) -> TaskState:
                 rows=[{"id": r.id, "category_row": r.category_row, "theme": r.theme, "where": r.where}
                       for r in rows],
                 criteria_list=lead.criteria_list, theme=lead.theme,
+                row_fix_texts=[o.text for r in rows if r.id != lead.id
+                               for o in s.query(Option).filter_by(row_id=r.id, key="fix")],
             )
     return st
 
@@ -647,15 +672,23 @@ def update_op(op_id: int, op: dict[str, Any] | None, user: str | None, confirmed
 
 
 def suggest_rule_ops(state: TaskState) -> int:
-    """Add rule-based prompt/reference ops for every option that has none from rules yet."""
+    """Add rule-based ops (prompt, reference and property edits) to every option.
+
+    An op that the option already has (same effect) is not added again.
+    """
     n = 0
     for card in state.cards.values():
         for key, text in card.options.items():
             if key == "new":
                 continue
-            if any(o.get("_source") == "rule" for o in card.ops.get(key, [])):
-                continue
-            for op in opsmod.rule_suggestions(key, card.part, card.impacts, text, state.file_names):
+            have = {opsmod.effect(o) for o in card.ops.get(key, [])}
+            sugg = opsmod.rule_suggestions(key, card.part, card.impacts, text, state.file_names)
+            for t in [text] + (card.row_fix_texts if key == "fix" else []):
+                sugg += opsmod.metadata_suggestions(t, state.file_roles)
+            for op in sugg:
+                if opsmod.effect(op) in have:
+                    continue
+                have.add(opsmod.effect(op))
                 add_op(card.option_ids[key], op, "rule", None)
                 n += 1
     return n

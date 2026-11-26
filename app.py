@@ -45,7 +45,14 @@ for tid, code, versions in task_rows:
         row["Gold %"] = f"{fl['projection']['gold']['score_pct']:.1%}"
     else:
         row["Model %"] = row["Gold %"] = "not graded"
-    row["Verification"] = "–"
+    try:
+        from core import verify
+
+        vp = verify.progress(rid)
+    except Exception:  # noqa: BLE001
+        vp = None
+    row["Verification"] = (f"{vp['label']}: {vp['addressed']}/{vp['total']} addressed"
+                           + (f", {vp['untracked']} untracked" if vp["untracked"] else "")) if vp else "–"
     rows.append(row)
 
 st.dataframe(rows, hide_index=True, width="stretch")

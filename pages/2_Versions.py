@@ -115,3 +115,12 @@ with session_scope() as s:
         for n in notes:
             st.markdown(f"**Note {n.idx}**")
             st.text(n.text)
+
+st.subheader("Integrity checks")
+try:
+    from core import verify
+
+    st.dataframe([{"": {True: "✅", False: "❌", None: "–"}[c["ok"]], "Check": c["check"], "Detail": c["detail"]}
+                  for c in verify.integrity(vid)], hide_index=True, width="stretch")
+except Exception as e:  # noqa: BLE001 - never crash the page
+    st.error(f"Couldn't run the integrity checks: {e}")

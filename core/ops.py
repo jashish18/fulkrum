@@ -186,6 +186,41 @@ def rule_suggestions(option_key: str, part: str, impacts: list[dict[str, Any]], 
     return out
 
 
+# File properties named in a fix, e.g. "Clear the Author and Last Modified By properties of X.docx".
+PROPERTY_FIELDS = {
+    "author": ["creator", "Author"], "creator": ["creator", "Creator"],
+    "last modified by": ["lastModifiedBy"], "lastmodifiedby": ["lastModifiedBy"],
+    "company": ["Company"], "manager": ["Manager"], "title": ["title", "Title"],
+}
+_PROP_RX = re.compile(r"\bClear(?:s|ing)?\s+the\s+(?P<props>.+?)\s+propert(?:y|ies)\s+of\s+(?:the\s+)?"
+                      r"(?P<file>.+?\.(?:xlsx|xlsm|docx|pptx|pdf))", re.I)
+
+
+def property_fields(props: str) -> list[str]:
+    """'Author and Last Modified By' -> ['Author', 'Last Modified By'] (display names)."""
+    names = [p.strip() for p in re.split(r",|\band\b", props) if p.strip()]
+    return [n for n in names if n.lower() in PROPERTY_FIELDS]
+
+
+def metadata_suggestions(text: str, file_roles: dict[str, str]) -> list[dict[str, Any]]:
+    """Property-clearing ops from a fix's text. A gold file gets a gold_edit, others a reference_edit."""
+    out = []
+    for m in _PROP_RX.finditer(text or ""):
+        fields = property_fields(m.group("props"))
+        if not fields:
+            continue
+        want = m.group("file").strip().lower()
+        fname = next((f for f in file_roles if f.rsplit("/", 1)[-1].lower() == want), m.group("file").strip())
+        loc = "properties: " + ", ".join(fields)
+        change = f"Clear the {', '.join(fields)} propert{'y' if len(fields) == 1 else 'ies'}"
+        if file_roles.get(fname) == "gold":
+            out.append({"type": "gold_edit", "location": loc, "change": change})
+        else:
+            out.append({"type": "reference_edit", "file": fname, "location": loc, "change": change,
+                        "metadata_only": True})
+    return out
+
+
 # ---------------------------------------------------------------------------
 # LLM derivation
 # ---------------------------------------------------------------------------

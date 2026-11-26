@@ -110,7 +110,7 @@ with tab_zip:
         col1, col2 = st.columns(2)
         task_code = col1.text_input("Task number", value=staged.suggested_task or "")
         label = col2.text_input("Version label", value=staged.suggested_label or "",
-                                help="Prefilled from a v<number> in the zip name.")
+                                help="Prefilled from a v<number> in the zip name. Use a new label for a revised version, even if the zip is the same.")
 
         table = [
             {"File": f.name, "Role": f.role, "Suggested": f.suggested_role, "Why": f.reason}

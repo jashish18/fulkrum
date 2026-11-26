@@ -75,3 +75,16 @@ Where the spec is silent, the simplest option was chosen and recorded here.
 5. **The original upload is stored** at `DATA_DIR/reports/<id>/original.xlsx` and never changed; each download is a fresh copy. Reports saved before Phase 5 have no stored original, so upload them again to enable the download.
 6. **Dashboard summary sheet** is replaced if the report already has one. Its projected scores per card apply that card's final decision on top of every other current decision.
 7. **File name**: `<report name> - decisions <YYYY-MM-DD>.xlsx`.
+
+## Phase 6 – Verification and integrity
+
+1. **Same zip, new label = new version.** Uploading an identical zip under the same label still reuses the saved version (spec 15). Under a new label it is saved as a new version, so it can be checked against the baseline.
+2. **Baseline.** The report's flagged version, unless the user picks another on the Verification tab. If no version carries the flagged label, the last version uploaded before the report is used (it used to be the newest version, which would have made a revised upload its own baseline).
+3. **Expected changes come from final decisions only**, one per op of the decided option (scoped decisions keep only the ops in scope). Keep decisions expect no change. A change decision with no ops becomes one "needs_human" line, since there is nothing to test automatically.
+4. **Property-clearing fixes become ops.** "Clear the Author and Last Modified By properties of X" (in a card's fix or any of its folded rows) is turned into a metadata-only reference edit, or a gold edit for the gold file, so it can be checked. "Author" means the Office `creator` field (or a PDF's Author).
+5. **Results.** If nothing the change targets moved, the result is *missing* (even if the check already held in the baseline; the evidence says so). If it moved: the check holds → *addressed*; it held before and not now → *regressed*; some fields or parts done → *partial*; otherwise the AI checks it when switched on, and a person checks it when not (*needs_human*). Model-grade changes with an unchanged model output read "re-run pending".
+6. **Untracked changes** are diff hunks that no expected change targets. Their status (accepted / flagged) and every result override are kept when the check is run again, with the automatic result shown beside the override, and both are written to the audit log.
+7. **Trajectory steps** are read from "Subtask N:" and "Step N.M:" lines. Steps are matched by id, then by text similarity (≥ 85), like rubric criteria. Splitting a step (TS-01) is checked as "the subtask now has at least 5 steps".
+8. **Cell refs in the trajectory** that follow another file's name on the same line (e.g. "Working_Hours.xlsx (footnote A250)") belong to that file and are not checked against the gold.
+9. **A re-saved file with no visible difference** (same text, cells and properties, different bytes) is listed once as "changed (no difference in text, cells or properties)" so it can be accepted.
+10. **Integrity checks** also report each subtask's step count against the 5–15 guideline. They show on the Versions page and the Verification tab, and in the verification workbook.

@@ -25,5 +25,5 @@ Acceptance tests use the files in `samples/` (gitignored) and are skipped when i
 - [x] P3 Grading and review (real grading needs an OpenRouter key)
 - [x] P4 Step 1 scenarios
 - [x] P5 Write-back
-- [ ] P6 Verification and integrity
+- [x] P6 Verification and integrity
 - [ ] P7 Deployment
