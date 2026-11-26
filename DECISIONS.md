@@ -96,3 +96,13 @@ Where the spec is silent, the simplest option was chosen and recorded here.
 3. **Windows launcher.** `run_windows.bat` makes its Python environment under `%LOCALAPPDATA%` so OneDrive doesn't sync thousands of package files, installs the requirements, creates `.env` from `.env.example` on first run and starts the app.
 4. **Streamlit's developer toolbar** (the "Deploy" button) is hidden for users.
 5. The Docker image couldn't be built in the cloud workspace (Docker Hub refused with "too many requests"), so it was checked another way: the full test suite passes on Python 3.11, and the app was started with the image's exact start command and settings. It answers the health check, refuses to open without a password and signs in with one.
+
+## After P7 – Bulk upload and overview
+
+1. **Bulk upload** matches files by the task number in their names: `NN-….zip` (or "Task NN"), `rework_checks_NN`, `qa_feedback_NN`. A zip holding several task zips or reports is opened one level deep.
+2. **Version label** comes from the report's "flagged at vNN" line, else a `v<number>` in the zip name; with neither, the task waits for a label.
+3. **Saved without asking** when each required role (prompt, rubric, gold, model output) has a file, no file is unrecognised and the rubric reads. Otherwise the task shows its role table to confirm.
+4. **A report that is already saved is kept** on a second bulk upload, because saving it again would clear its decisions. A tick box replaces them on purpose.
+5. The AI fill-in for report rows is off by default in bulk (speed); rows the rules read fully don't need it.
+6. **Stages** on the Overview: report only → uploaded → to grade → deciding (some cards lack a final decision) → decided → verifying → verified (every expected change addressed and no unreviewed untracked change).
+7. **Category** is the report's "Category N" from each card's rows; **Part** is 2 / 1b / 1a.

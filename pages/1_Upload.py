@@ -11,7 +11,87 @@ st.set_page_config(page_title="Upload", layout="wide")
 user = require_auth()
 st.title("Upload")
 
-tab_zip, tab_report, tab_qa = st.tabs(["Task zip", "Rework report", "Prior QA sheet"])
+tab_bulk, tab_zip, tab_report, tab_qa = st.tabs(["Bulk upload", "Task zip", "Rework report", "Prior QA sheet"])
+
+with tab_bulk:
+    from core import bulk
+    from core import llm as _llm
+
+    st.caption("Drop all your task zips, rework reports and QA sheets here at once, or one zip that holds them "
+               "all. Files are matched by the task number in their names (e.g. 35-sampling….zip and "
+               "batch_2_rework_checks_35 - by part.xlsx). Each task's version label is taken from its report's "
+               "\"flagged at\" line.")
+    ups = st.file_uploader("Task zips, rework reports, QA sheets", type=["zip", "xlsx"],
+                           accept_multiple_files=True, key="bulk_upl")
+    sig = tuple((u.name, u.size) for u in ups or [])
+    if ups and st.session_state.get("bulk_sig") != sig:
+        if st.button("Check files", type="primary"):
+            with st.spinner("Opening every file…"):
+                plans, unmatched = bulk.group([(u.name, u.getvalue()) for u in ups])
+                prog = st.progress(0.0)
+                for i, p_ in enumerate(plans.values(), 1):
+                    bulk.check(p_)
+                    prog.progress(i / max(len(plans), 1))
+            st.session_state["bulk_plans"], st.session_state["bulk_unmatched"] = plans, unmatched
+            st.session_state["bulk_sig"] = sig
+            st.rerun()
+    plans = st.session_state.get("bulk_plans") if ups and st.session_state.get("bulk_sig") == sig else None
+    if plans is not None:
+        for n in st.session_state.get("bulk_unmatched") or []:
+            st.warning(f"{n}: no task number found in the name, so it was skipped.")
+        st.dataframe([{"Task": p_.task, "Status": p_.status, "Version label": p_.label or "",
+                       "From": p_.label_from, "Zip": p_.zip_name or "—", "Report": p_.report_name or "—",
+                       "QA sheet": p_.qa_name or ("inside zip" if p_.staged and any(
+                           f.role == "qa_sheet" for f in p_.staged.files) else "—"),
+                       "Notes": "; ".join(p_.problems + p_.unsure_roles + p_.notes)}
+                      for p_ in plans.values()], hide_index=True, width="stretch")
+
+        for p_ in plans.values():
+            if p_.status not in ("needs label", "check roles"):
+                continue
+            with st.expander(f"Task {p_.task}: {p_.status}", expanded=True):
+                if p_.status == "needs label" or not p_.label:
+                    p_.label = st.text_input("Version label (required)", value=p_.label or "",
+                                             placeholder="e.g. v20", key=f"bl_{p_.task}") or None
+                if p_.staged and p_.unsure_roles:
+                    st.write("Check the roles: " + "; ".join(p_.unsure_roles))
+                    ed = st.data_editor(
+                        [{"File": f.name, "Role": f.role, "Why": f.reason} for f in p_.staged.files],
+                        column_config={"Role": st.column_config.SelectboxColumn("Role", options=ROLES, required=True),
+                                       "File": st.column_config.TextColumn(disabled=True),
+                                       "Why": st.column_config.TextColumn(disabled=True)},
+                        hide_index=True, width="stretch", key=f"br_{p_.task}")
+                    for f, r_ in zip(p_.staged.files, ed):
+                        f.role = r_["Role"]
+                    counts = {r: sum(1 for f in p_.staged.files if f.role == r) for r in bulk.REQUIRED_ROLES}
+                    still = [f"no {r} file" for r, n in counts.items() if n == 0]
+                    if still:
+                        st.warning("Still missing: " + ", ".join(still) + ".")
+                if p_.label and st.checkbox("These roles and the label are right", key=f"bok_{p_.task}"):
+                    p_.status = "ready"
+                    p_.unsure_roles = []
+
+        ready = [p_ for p_ in plans.values() if p_.status == "ready"]
+        use_llm = st.checkbox("Let the AI fill in report rows the rules couldn't read", value=False,
+                              disabled=not _llm.is_configured(),
+                              help="Off by default for speed. Rows the rules read fully don't need it.")
+        replace = st.checkbox("Replace reports that are already saved (this clears their decisions)", value=False)
+        if st.button(f"Save {len(ready)} ready task(s)", type="primary", disabled=not ready):
+            prog = st.progress(0.0)
+            for i, p_ in enumerate(ready, 1):
+                prog.progress((i - 1) / len(ready), text=f"Saving task {p_.task}…")
+                try:
+                    bulk.save(p_, user, use_llm=use_llm, replace_reports=replace)
+                except Exception as e:  # noqa: BLE001 - one bad task mustn't stop the rest
+                    p_.status = "error"
+                    p_.problems.append(f"save: {e}")
+            prog.progress(1.0, text="Done")
+            saved = [p_.task for p_ in ready if p_.status == "saved"]
+            if saved:
+                st.success(f"Saved {len(saved)} task(s): {', '.join(saved)}. The Overview page shows them all.")
+            for p_ in ready:
+                if p_.status == "error":
+                    st.error(f"Task {p_.task}: {'; '.join(p_.problems)}")
 
 with tab_report:
     rup = st.file_uploader("Rework report (batch_2_rework_checks_<task> - by part.xlsx)", type=["xlsx"],

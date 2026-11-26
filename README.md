@@ -13,6 +13,8 @@ The dashboard only reads task files. People make the fixes; the app checks them.
 3. Your browser opens at <http://localhost:8501>. Sign in with your name and the password.
 4. Keep the black window open while you use the app. Close it to stop the app.
 
+**Many tasks at once:** on **Upload → Bulk upload**, select all your task zips, rework reports and QA sheets together (or one zip that holds them all) and click **Check files**. Files are matched by the task number in their names, and each version label comes from the report's "flagged at" line. Tasks marked *ready* are saved with **Save ready tasks**; any task the app is unsure about opens a short box to confirm its roles or label. The **Overview** page then shows every task's stage, open flags, parts and categories, with filters, plus every card across all tasks.
+
 Your data (uploads, grades, decisions) is kept in the `data` folder next to the app. The installed packages live in `%LOCALAPPDATA%\TaskReworkDashboard`, outside OneDrive.
 
 Without an `LLM_API_KEY` everything still works except AI grading, AI reading of QA comments and AI checks; those parts fall back to rules or ask a person.
