@@ -35,7 +35,7 @@ def data_version() -> tuple:
     from db.session import session_scope
 
     with session_scope() as s:
-        return tuple(s.query(func.count(m.id), func.max(m.id)).one() for m in
+        return tuple(tuple(int(x or 0) for x in s.query(func.count(m.id), func.max(m.id)).one()) for m in
                      (AuditLog, Decision, Grade, Report, Verification, Version))
 
 

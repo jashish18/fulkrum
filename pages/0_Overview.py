@@ -12,10 +12,12 @@ st.caption(f"Signed in as {user}")
 
 
 @st.cache_data(show_spinner="Reading every task…")
-def _build(_version):
+def _build(version):  # no leading underscore: Streamlit must hash it, or the cache never refreshes
     return overview.build()
 
 
+if st.button("Refresh", help="Re-read every task now"):
+    _build.clear()
 tasks, cards = _build(overview.data_version())
 if not tasks:
     st.info("No tasks yet. Go to **Upload** in the sidebar. The **Bulk upload** tab takes all your task zips "

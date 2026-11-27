@@ -24,6 +24,9 @@ def test_bulk_matches_saves_and_overview():
         bulk.save(p, "tester", use_llm=False)
         assert p.status == "saved" and p.version_id and p.report_id
 
+    import pickle
+
+    pickle.dumps(overview.data_version())  # the Overview's cache key must be plain data
     tasks, cards = overview.build()
     assert [t["Task"] for t in tasks] == ["35", "45"]
     assert all(t["Stage"] == "to grade" for t in tasks)   # nothing graded yet
