@@ -18,7 +18,7 @@ def _build(version):  # no leading underscore: Streamlit must hash it, or the ca
 
 if st.button("Refresh", help="Re-read every task now"):
     _build.clear()
-tasks, cards = _build(overview.data_version())
+tasks, cards = _build(str(overview.data_version()))  # a plain string is always hashable
 if not tasks:
     st.info("No tasks yet. Go to **Upload** in the sidebar. The **Bulk upload** tab takes all your task zips "
             "and rework reports in one go.")
