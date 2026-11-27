@@ -48,6 +48,7 @@ def build() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     with session_scope() as s:
         tasks = [(t.id, t.task_code, [v.label for v in sorted(t.versions, key=lambda v: v.uploaded_at)])
                  for t in s.query(Task)]
+        last_version = {t.id: max(t.versions, key=lambda v: v.uploaded_at).id for t in s.query(Task) if t.versions}
         latest: dict[int, int] = {}
         for r in s.query(Report).order_by(Report.uploaded_at, Report.id):
             latest[r.task_id] = r.id
@@ -57,7 +58,7 @@ def build() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         row: dict[str, Any] = {"Task": code, "Versions": ", ".join(versions) or "–", "report_id": latest.get(tid)}
         rid = latest.get(tid)
         if rid is None:
-            row.update(Stage="uploaded", Cards=0, Final=0)
+            row.update(Stage="uploaded", Cards=0, Final=0, version_id=last_version.get(tid))
             task_rows.append(row)
             continue
         impact.prepare(rid)

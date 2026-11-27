@@ -7,7 +7,7 @@ from core import impact, llm, settings, verify
 from core import ops as opsmod
 from core.auth import require_auth
 from core.ingest import load_text
-from core.ui import decision_label, flag_chips, pick_report
+from core.ui import decision_label, flag_chips
 from db.models import AuditLog, Card, File
 from db.session import session_scope
 
@@ -15,9 +15,101 @@ st.set_page_config(page_title="Task", layout="wide")
 user = require_auth()
 st.title("Task")
 
-rid = pick_report()
-if rid is None:
+def _pick_task():
+    """Every task: with a rework report it opens the full page; with only a zip, a version view."""
+    from db.models import Report, Task, Version
+
+    with session_scope() as s:
+        latest = {}
+        for r in s.query(Report).order_by(Report.uploaded_at, Report.id):
+            latest[r.task_id] = (r.id, r.flagged_version)
+        opts = []
+        for t in sorted(s.query(Task), key=lambda t: (len(t.task_code), t.task_code)):
+            vs = sorted(t.versions, key=lambda v: v.uploaded_at)
+            if t.id in latest:
+                rid_, fv = latest[t.id]
+                opts.append((f"Task {t.task_code} · flagged at {fv}", ("report", rid_)))
+            elif vs:
+                opts.append((f"Task {t.task_code} · {vs[-1].label} (no rework report yet)", ("version", vs[-1].id)))
+    if not opts:
+        st.info("Nothing uploaded yet. Add task zips (and their rework reports) on the **Upload** page.")
+        st.stop()
+    labels = [o[0] for o in opts]
+    if st.session_state.get("task_pick") not in labels:  # first visit, or sent here from another page
+        want = (("version", st.session_state["task_version_id"]) if st.session_state.get("task_version_id")
+                else ("report", st.session_state.get("report_id")))
+        st.session_state["task_pick"] = next((lab for lab, v in opts if v == want), labels[0])
+    label = st.selectbox("Task", labels, key="task_pick")
+    kind, ident = dict(opts)[label]
+    if kind == "report":
+        st.session_state["report_id"] = ident
+        st.session_state.pop("task_version_id", None)
+    else:
+        st.session_state["task_version_id"] = ident
+    return kind, ident
+
+
+def _version_view(vid: int) -> None:
+    """A task with only its zip: prompt, failure notes, rubric, files, grades and integrity checks."""
+    from core import grading
+    from db.models import Criterion, FailureNote, Version
+
+    with session_scope() as s:
+        v = s.get(Version, vid)
+        label = v.label
+        files = [(f.id, f.name, f.role, f.text_path) for f in s.query(File).filter_by(version_id=vid).order_by(File.name)]
+        crits = [dict(Id=c.crit_id, Section=c.subtask, Points=c.points, Category=c.category or "", Criterion=c.text)
+                 for c in s.query(Criterion).filter_by(version_id=vid).order_by(Criterion.id)]
+        notes = [(n.idx, n.text) for n in s.query(FailureNote).filter_by(version_id=vid).order_by(FailureNote.idx)]
+    st.info(f"Version {label}. Cards, decisions, flags and verification appear here once this task's rework "
+            "report is uploaded (Upload → Rework report, or Bulk upload).")
+    prompt = next((load_text(tp) for _, _, r, tp in files if r == "prompt"), "")
+    with st.expander("Prompt", expanded=True):
+        st.text(prompt or "(no prompt file)")
+
+    c1, c2 = st.columns(2)
+    for col, role, name in ((c1, "model_output", "Model"), (c2, "gold", "Gold")):
+        fid = next((i for i, _, r, _ in files if r == role), None)
+        if fid is None:
+            col.metric(name, "no file")
+            continue
+        lines = grading.review_lines(vid, fid)["lines"]
+        if any(ln["final"] or ln["suggested"] for ln in lines):
+            sc = grading.file_score(vid, fid)
+            col.metric(f"{name} score", f"{sc['score_pct']:.1%}")
+        else:
+            col.metric(f"{name} score", "not graded")
+    st.page_link("pages/4_Grades.py", label="Grade the gold and model output →")
+
+    st.subheader("Failure notes")
+    for idx, text in notes:
+        st.markdown(f"**Note {idx}**")
+        st.caption(text[:600])
+    if not notes:
+        st.write("No failure notes found.")
+
+    t_rub, t_files, t_int = st.tabs(["Rubric", "Files", "Integrity checks"])
+    with t_rub:
+        if crits:
+            st.dataframe(crits, hide_index=True, width="stretch")
+        else:
+            st.write("No rubric criteria found.")
+    with t_files:
+        st.dataframe([{"File": n, "Role": r} for _, n, r, _ in files], hide_index=True, width="stretch")
+        st.page_link("pages/2_Versions.py", label="Change roles or see extraction details →")
+    with t_int:
+        try:
+            st.dataframe([{"": {True: "✅", False: "❌", None: "–"}[c["ok"]], "Check": c["check"],
+                           "Detail": c["detail"]} for c in verify.integrity(vid)], hide_index=True, width="stretch")
+        except Exception as e:  # noqa: BLE001
+            st.error(f"Couldn't run the integrity checks: {e}")
+
+
+kind, ident = _pick_task()
+if kind == "version":
+    _version_view(ident)
     st.stop()
+rid = ident
 impact.prepare(rid, user)
 state = impact.load_state(rid)
 fl = impact.compute_flags(state)

@@ -60,21 +60,27 @@ shown = [t for t in tasks if _task_ok(t)]
 st.subheader(f"Tasks ({len(shown)} of {len(tasks)})")
 cols_order = ["Task", "Stage", "Flagged at", "Versions", "Cards", "Decided", "Final", *overview.FLAGS, "Parts",
               "Categories", "Model %", "Gold %", "Breaks", "Verification"]
-st.dataframe([{k: t.get(k, "") for k in cols_order} for t in shown], hide_index=True, width="stretch",
+st.dataframe([{k: t.get(k) for k in cols_order} for t in shown], hide_index=True, width="stretch",
              column_config={"Breaks": st.column_config.TextColumn(width="medium")})
 
 report_of = {t["Task"]: t["report_id"] for t in shown if t.get("report_id")}
+version_of = {t["Task"]: t["version_id"] for t in shown if not t.get("report_id") and t.get("version_id")}
 
 
 def _open_task():
     pick = st.session_state.get("ov_open")
     if pick:
-        st.session_state["report_id"] = report_of[pick]
+        if pick in report_of:
+            st.session_state["report_id"] = report_of[pick]
+            st.session_state.pop("task_version_id", None)
+        else:
+            st.session_state["task_version_id"] = version_of[pick]
+        st.session_state.pop("task_pick", None)
         st.session_state["ov_goto"] = True
         st.session_state["ov_open"] = ""
 
 
-st.selectbox("Open a task", [""] + list(report_of), key="ov_open", on_change=_open_task,
+st.selectbox("Open a task", [""] + sorted(set(report_of) | set(version_of), key=lambda x: (len(x), x)), key="ov_open", on_change=_open_task,
              format_func=lambda x: x and f"Task {x}" or "Choose…")
 if st.session_state.pop("ov_goto", False):
     st.switch_page("pages/5_Task.py")
