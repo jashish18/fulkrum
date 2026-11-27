@@ -11,7 +11,7 @@ st.title("Settings")
 
 st.subheader("Grader model")
 if not config.LLM_API_KEY:
-    st.warning("No OpenRouter key yet. Add `LLM_API_KEY=...` to the `.env` file next to `app.py`, "
+    st.warning("No OpenRouter key yet. Add `LLM_API_KEY=...` to the `.env` file in the app folder, "
                "then restart the app. The key is never shown here.")
 
 current = settings.grader_model()

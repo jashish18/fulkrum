@@ -48,7 +48,7 @@ streamlit run app.py
 python -m pytest -q    # acceptance tests use samples/ (gitignored) and skip without it
 ```
 
-Layout: `app.py` (portfolio), `pages/` (Upload, Versions, Cards, Grades, Task, Rules, Settings), `core/` (ingest, extract, report_parser, grading, scoring, impact, verify, writeback, llm), `db/`, `prompts/` (versioned LLM prompts), `tests/`.
+Layout: `app.py` (entry and sidebar), `pages/` (Overview, Upload, Versions, Cards, Grades, Task, Rules, Settings), `core/` (ingest, extract, report_parser, grading, scoring, impact, verify, writeback, llm), `db/`, `prompts/` (versioned LLM prompts), `tests/`.
 
 ## Status
 
